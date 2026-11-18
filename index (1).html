@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fix the Bot</title>
+<!-- SYS-LOG 0x7F: decoder direction = BACKWARD. Shift letters back toward A. -->
+<style>
+:root{--bg:#0b0f14;--panel:#121923;--line:#223042;--text:#e6edf3;--mute:#8b9bb0;--acc:#3ddc97;--warn:#ffb547;--bad:#ff5d6c;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+header{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:12px;justify-content:space-between;padding:10px 16px;background:#0b0f14ee;border-bottom:1px solid var(--line);backdrop-filter:blur(6px)}
+.brand{font-family:var(--mono);font-weight:700;letter-spacing:.5px}
+.brand b{color:var(--acc)}
+.stats{display:flex;gap:14px;font-family:var(--mono);font-size:14px}
+.stats .t{color:var(--acc)} .stats .t.low{color:var(--bad)}
+main{max-width:860px;margin:0 auto;padding:20px 16px 60px}
+h1{font-size:28px;margin:8px 0 4px} h2{font-size:21px;margin:0 0 6px} h3{font-size:16px;margin:18px 0 6px}
+p{margin:8px 0} .mute{color:var(--mute)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;margin:14px 0}
+ul,ol{padding-left:22px;margin:8px 0} li{margin:4px 0}
+button,.btn{font:inherit;cursor:pointer;border:1px solid var(--line);background:#1a2431;color:var(--text);padding:10px 16px;border-radius:9px;text-decoration:none;display:inline-block}
+button.pri{background:var(--acc);color:#04130c;border-color:var(--acc);font-weight:700}
+button:disabled{opacity:.45;cursor:not-allowed}
+input{font:inherit;width:100%;padding:11px 12px;border-radius:9px;border:1px solid var(--line);background:#0d131b;color:var(--text);font-family:var(--mono)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.row input{flex:1;min-width:180px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.lvl{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;cursor:pointer;text-align:left;width:100%}
+.lvl.done{border-color:var(--acc)} .lvl.locked{opacity:.5;cursor:not-allowed}
+.tag{font-family:var(--mono);font-size:12px;padding:2px 8px;border-radius:99px;border:1px solid var(--line);color:var(--mute)}
+.tag.ok{color:var(--acc);border-color:var(--acc)}
+pre{background:#0d131b;border:1px solid var(--line);border-radius:9px;padding:12px;overflow-x:auto;font:13.5px/1.55 var(--mono);margin:10px 0}
+.msg{font-family:var(--mono);margin-top:10px;min-height:1.5em}
+.msg.ok{color:var(--acc)} .msg.bad{color:var(--bad)}
+.hint{border-left:3px solid var(--warn);padding:6px 10px;margin:8px 0;background:#1d1a12;border-radius:0 8px 8px 0}
+.frag{font-family:var(--mono);font-size:20px;color:var(--acc);letter-spacing:2px}
+table{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:13px}
+td,th{border:1px solid var(--line);padding:5px 7px;text-align:left}
+.keys{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:4px;font-family:var(--mono);font-size:13px}
+.keys div{background:#0d131b;border:1px solid var(--line);border-radius:6px;padding:4px 8px}
+.hidden{display:none!important}
+.online{text-align:center;padding:40px 10px}
+.online .big{font:800 44px/1.1 var(--mono);color:var(--acc);text-shadow:0 0 18px #3ddc9799;animation:pulse 1.2s infinite}
+@keyframes pulse{50%{opacity:.55}}
+.boot{font-family:var(--mono);text-align:left;max-width:420px;margin:16px auto;color:var(--mute);font-size:14px}
+@media (max-width:520px){h1{font-size:23px}.stats{gap:9px;font-size:12px}.online .big{font-size:32px}}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">FIX&nbsp;THE&nbsp;<b>BOT</b></div>
+  <div class="stats hidden" id="stats"><span id="sTeam"></span><span>⭐ <span id="sScore">0</span></span><span class="t" id="sTime">60:00</span></div>
+</header>
+<main id="app"></main>
+
+<script>
+/* ======================= CONFIG ======================= */
+// Central database: paste your Firebase Realtime Database URL, e.g.
+// "https://fix-the-bot-default-rtdb.asia-southeast1.firebasedatabase.app"  (no trailing slash)
+const FIREBASE_URL = "";
+const EMAIL_DOMAIN = "dubai.bits-pilani.ac.in";
+const DURATION_MIN = 60;
+const LEVEL_POINTS = 100, BOOT_POINTS = 100, HINT_COST = [10, 20, 30];
+const TINKERCAD = {
+  1: "https://www.tinkercad.com/things/e8C4dSenGyQ-broken-led?sharecode=ZUkQETVkYGXd-3k6YFfhpR5N_ZWCUeJAwwFxIoePDYA",
+  2: "https://www.tinkercad.com/things/kdLaUfEoHyc-broken-led?sharecode=PdKZNAuVFndApYfsCrbFTsvcazZNx9n9sorEAYM2Daw"
+};
+const SALT = "ifor-ftb-2026-k9Qz";
+const HASHES = {"1":["03860fba07293d661f97acc3a52a76911b68de0588318c7d8aee745e03bd9b07","2bcf9708f51b717afc8e7d3c64e9f23a58d8ac444495de451fcc62b2e6e8af38"],"2":["ef40d41c1fed37b2a792ae774e6719271bd109082915ca94755e31a0be6d0f18","4d92f18b7cf7f2b688ced691a79623256cc2a83fdea15603cc1004caedb11397"],"3":["b4516195197301407b584ea97029c9e0129c29f0a6f0b98a0c321720b6c8a140"],"4":["dd0b1e0405e164ea3beb5e62ca6a2f1fe54316d8d07fcb709035ab6885828ce6"],"5":["22ca9d8366c4378ad622b26d9961e6d7e77058f268ac2694ef9c35e6149f5e35"],"boot":["45f4c1c620f20bc51bf78b2973fc9870bc7f862f919365283e269a38474a6dd6"]};
+/* ====================================================== */
+
+const MORSE = {A:".-",B:"-...",C:"-.-.",D:"-..",E:".",F:"..-.",G:"--.",H:"....",I:"..",J:".---",K:"-.-",L:".-..",M:"--",N:"-.",O:"---",P:".--.",Q:"--.-",R:".-.",S:"...",T:"-",U:"..-",V:"...-",W:".--",X:"-..-",Y:"-.--",Z:"--.."};
+const morseKey = () => `<h3>Morse code key</h3><div class="keys">${Object.entries(MORSE).map(([k,v])=>`<div><b>${k}</b> ${v}</div>`).join("")}</div>
+<p class="mute">Short flash/swing = dot, long = dash. A longer pause separates letters.</p>`;
+const binKey = () => `<h3>8-bit ASCII binary key</h3><div class="keys">${Object.keys(MORSE).map(k=>`<div><b>${k}</b> ${k.charCodeAt(0).toString(2).padStart(8,"0")}</div>`).join("")}</div>`;
+
+const LEVELS = {
+ 1:{type:"Hardware",title:"Power-up",mins:10,body:()=>`
+  <p>The bot's status LED is dark. An Arduino Uno should blink a message, but the circuit has wiring mistakes.</p>
+  <ol><li>Open the circuit and click <b>Copy and Tinker</b> (edit <b>your own copy</b>, never the original).</li>
+  <li>Find and fix the wiring mistakes, then press <b>Start Simulation</b>.</li>
+  <li>The LED blinks a word in Morse code. Decode it with the key below.</li></ol>
+  <p><a class="btn" target="_blank" rel="noopener" href="${TINKERCAD[1]}">Open circuit in Tinkercad ↗</a></p>
+  <p class="mute">Enter the word (letters) or its 8-bit ASCII binary.</p>${morseKey()}${binKey()}`,
+  hints:["Check the LED before you touch the code.","Look at the LED legs, and at which pin the wire lands on.","The wire should end on the pin the code uses, and the LED needs a resistor."]},
+ 2:{type:"Hardware",title:"Sensors & motors",mins:12,body:()=>`
+  <p>The bot can't see or move. An ultrasonic sensor and a servo should react to an object, but the wiring is wrong.</p>
+  <ol><li>Open the circuit and click <b>Copy and Tinker</b>.</li>
+  <li>Fix the wiring, start the simulation and open the <b>Serial Monitor</b>.</li>
+  <li>Drag the object close to the sensor. The servo swings a word in Morse code.</li></ol>
+  <p><a class="btn" target="_blank" rel="noopener" href="${TINKERCAD[2]}">Open circuit in Tinkercad ↗</a></p>
+  <p class="mute">Enter the word (letters) or its 8-bit ASCII binary.</p>${morseKey()}${binKey()}`,
+  hints:["Check the Serial Monitor first.","Look at the sensor's ground wire and its TRIG and ECHO wires.","GND must be shared, and the servo signal belongs on the pin the code uses."]},
+ 3:{type:"Software",title:"Syntax",mins:8,body:()=>`
+  <p>The bot's firmware won't compile. Fix it so the Serial Monitor prints the fragment.</p>
+  <ol><li>In Tinkercad, create a new circuit with an <b>Arduino Uno</b>.</li>
+  <li>Click <b>Code → Text</b>, delete everything, and paste the code below.</li>
+  <li>Fix the bugs, start the simulation and open the <b>Serial Monitor</b>.</li></ol>
+  <p><a class="btn" target="_blank" rel="noopener" href="https://www.tinkercad.com/circuits">Open Tinkercad Circuits ↗</a> <button onclick="copyCode('l3code')">Copy code</button></p>
+<pre id="l3code">// BOT FIRMWARE v0.3 - corrupted
+int code[] = {120, 111, 122, 107, 99, 120};
+
+void setup() {
+  pinMode(13, OUTPUT)
+  Serial.print("FRAGMENT: ");
+  for (int i = 0; i < 6; i++) {
+    Serial.print((char)(code[i] ^ 42));
+  }
+  Serial.println();
+  digitalWirte(13, HIGH);
+}
+
+void loop() {
+}</pre>
+  <p class="mute">Enter the text after "FRAGMENT:".</p>`,
+  hints:["Read the compiler messages from the top.","Two of the mistakes are spelling and punctuation.","It compiles but prints nothing? Check setup() for a missing Serial line."]},
+ 4:{type:"Software",title:"Logic bug",mins:12,body:()=>`
+  <p>The bot should print <b>L</b> (turn left) for every distance <b>under 20 cm</b>, and <b>S</b> (straight) for every other distance, once per reading. The code compiles, but it has <b>two logic bugs</b>.</p>
+  <ol><li>In Tinkercad, create a new circuit with an <b>Arduino Uno</b> (or reuse your Level 3 one).</li>
+  <li>Click <b>Code → Text</b>, delete everything, and paste the code below.</li>
+  <li>Fix the two logic bugs, start the simulation and open the <b>Serial Monitor</b>.</li>
+  <li>Enter the output the fixed code prints. <b>Write it down</b>: you'll need it for the final boot code.</li></ol>
+  <p><a class="btn" target="_blank" rel="noopener" href="https://www.tinkercad.com/circuits">Open Tinkercad Circuits ↗</a> <button onclick="copyCode('l4code')">Copy code</button></p>
+<pre id="l4code">// BOT NAVIGATION v0.4 - logic faulty
+int distances[8] = {25, 9, 18, 60, 3, 44, 19, 21};
+
+void setup() {
+  Serial.begin(9600);
+  for (int i = 1; i < 8; i++) {
+    if (distances[i] > 20) {
+      Serial.print("L");
+    } else {
+      Serial.print("S");
+    }
+  }
+  Serial.println();
+}
+
+void loop() {
+}</pre>
+  <p class="mute">Enter the letters printed on the Serial Monitor.</p>`,
+  hints:["Trace the loop with a pencil, starting from the very first reading.","Check where the loop starts and which way the comparison points.","Start at i = 0, and turn left below 20 cm. Your answer has 8 letters."]},
+ 5:{type:"Final",title:"Final decode",mins:10,body:()=>`
+  <p>The boot sequence is encrypted with a Caesar shift. Decode the word to get fragment 5.</p>
+  <p style="text-align:center"><span class="frag" style="font-size:34px">L P Z T</span></p>
+  <div class="card" style="margin:10px 0"><b>Clue:</b> the shift is the <b>number of 1s</b> in the 8-bit ASCII binary of <b>fragment 1</b>, taken modulo 26.<br><span class="mute">Which direction? The bot left a note for anyone who looks under the hood.</span></div>
+  ${binKey()}`,
+  hints:["Fragment 1 matters here. Write it out in binary.","Count every 1 in the binary of all its letters.","Take that count modulo 26 and shift each letter back."]}
+};
+
+/* ---------- state ---------- */
+const KEY = "ftb_state_v1";
+let S = load();
+if(S && !S.end) S.lastTick = Date.now();
+if(S && !S.members) S.members = [];
+window.addEventListener('pagehide', ()=>tick());
+function load(){ try{ return JSON.parse(localStorage.getItem(KEY)) || null }catch(e){ return null } }
+function save(){ try{ localStorage.setItem(KEY, JSON.stringify(S)) }catch(e){} push(); }
+
+const norm = s => String(s).toUpperCase().replace(/[^A-Z0-9]/g,"").replace(/^FRAGMENT/,"");
+async function sha(k, s){
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(SALT+":"+k+":"+norm(s)));
+  return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,"0")).join("");
+}
+const now = () => Date.now();
+// Timer only counts while the site is open. Gaps longer than GAP_MS (site closed, laptop asleep) are not counted.
+const GAP_MS = 90000;
+function tick(){
+  if(!S || !S.start || S.end) return;
+  const t = now(), d = t - (S.lastTick || t);
+  if(d > 0 && d <= GAP_MS) S.used = (S.used || 0) + d;
+  S.lastTick = t;
+  if(S.used > DURATION_MIN*60000) S.used = DURATION_MIN*60000;
+  try{ localStorage.setItem(KEY, JSON.stringify(S)) }catch(e){}
+}
+const usedMs = () => S && S.start ? (S.used || 0) : 0;
+const remainingMs = () => S && S.start ? Math.max(0, DURATION_MIN*60000 - usedMs()) : DURATION_MIN*60000;
+const timeUp = () => S && S.start && !S.end && remainingMs() <= 0;
+function score(){
+  if(!S) return 0; let p = 0;
+  for(const k in S.solved){ p += LEVEL_POINTS + S.solved[k].bonus }
+  for(const k in S.hints){ for(let i=0;i<S.hints[k];i++) p -= HINT_COST[i] }
+  if(S.end) p += BOOT_POINTS;
+  return p;
+}
+const allHW_SW = () => [1,2,3,4].every(n=>S.solved[n]);
+
+/* ---------- central database (Firebase Realtime Database, REST) ---------- */
+// board/<team>  : public leaderboard row
+// state/<team>  : game progress, used to resume on another device
+// teams/<team>  : full organizer record (names, BITS IDs, emails, IPs) - write-only from the site
+// ids/<BITS ID> : which team each BITS ID belongs to
+const ISO = t => t ? new Date(t).toISOString() : null;
+const fmt = ms => `${String(Math.floor(ms/60000)).padStart(2,"0")}:${String(Math.floor(ms/1000)%60).padStart(2,"0")}`;
+async function db(path, opts){
+  const r = await fetch(`${FIREBASE_URL}/${path}.json`, opts);
+  if(!r.ok) throw new Error(r.status);
+  return r.json();
+}
+async function getIP(){
+  try{ const r = await fetch("https://api.ipify.org?format=json"); return (await r.json()).ip }catch(e){ return null }
+}
+async function refreshIP(){
+  if(!S) return; const ip = await getIP(); if(!ip) return;
+  S.ip = ip; S.ips = [...new Set([...(S.ips||[]), ip])].slice(-10); save();
+}
+async function registerIds(){
+  if(!FIREBASE_URL || !S || S.idsOk) return;
+  try{
+    for(const m of S.members){
+      const cur = await db(`ids/${m.bitsId}`);
+      if(cur && cur !== S.id) continue;
+      if(!cur) await db(`ids/${m.bitsId}`, {method:"PUT", body:JSON.stringify(S.id)});
+    }
+    await db(`teams/${S.id}/members`, {method:"PUT", body:JSON.stringify(S.members)});
+    S.idsOk = true; try{ localStorage.setItem(KEY, JSON.stringify(S)) }catch(e){}
+  }catch(e){}
+}
+const st_ids = () => S.memberIds || S.members.map(m=>m.bitsId);
+let pushing = false;
+function push(){
+  if(!FIREBASE_URL || !S || pushing) return;
+  tick(); pushing = true; registerIds();
+  const used = usedMs(), left = remainingMs(), t = now();
+  const solvedLevels = Object.keys(S.solved).map(Number).sort();
+  const hintsTotal = Object.values(S.hints).reduce((a,b)=>a+b,0);
+  const body = {
+    [`board/${S.id}`]: {name:S.team, score:score(), solved:solvedLevels.length, online:!!S.end, usedMs:used, updated:t},
+    [`state/${S.id}`]: {team:S.team, id:S.id, start:S.start, used:S.used||0, solved:S.solved, hints:S.hints, end:S.end||null,
+                        memberIds:st_ids()},
+    ...Object.fromEntries(Object.entries({teamName:S.team, solvedLevels, solvedCount:solvedLevels.length,
+                        hintsUsed:S.hints, hintsTotal, timeLeft:fmt(left), timeLeftMs:left, timeUsed:fmt(used),
+                        score:score(), botOnline:!!S.end, ip:S.ip||null, ipHistory:S.ips||[],
+                        device:navigator.userAgent, startedAt:ISO(S.start), finishedAt:ISO(S.end), lastUpdate:ISO(t)})
+      .map(([k,v])=>[`teams/${S.id}/${k}`, v]))   // members are written once at registration, never overwritten
+  };
+  fetch(`${FIREBASE_URL}/.json`,{method:"PATCH", body:JSON.stringify(body)})
+    .catch(()=>{}).finally(()=>{ pushing = false; });
+}
+
+/* ---------- views ---------- */
+const app = document.getElementById("app");
+function route(){
+  const h = location.hash.slice(1);
+  if(h==="leaderboard") return viewBoard();
+  if(h==="reset"){ if(confirm("ORGANIZERS ONLY: erase this team's progress on this device?")){ try{localStorage.removeItem(KEY)}catch(e){} S=null; } location.hash=""; return route(); }
+  if(!S) return viewWelcome();
+  if(S.end) return viewOnline();
+  if(h.startsWith("level")) return viewLevel(+h.slice(5));
+  if(h==="boot") return viewBoot();
+  if(h==="rules") return viewWelcome();
+  return viewMap();
+}
+window.addEventListener("hashchange", route);
+const go = h => { location.hash = h; window.scrollTo(0,0); };
+
+function rulesHTML(){ return `
+ <div class="card"><h2>Mission briefing</h2>
+  <p>The bot is offline and its systems are scrambled. Repair it by solving <b>5 levels</b> (2 hardware, 3 software). Each solved level gives a <b>fragment</b> of the boot code. Collect all 5, enter the boot code, and bring the bot back online.</p></div>
+ <div class="card"><h2>Event guidelines</h2>
+  <ul>
+   <li><b>Teams of 2–3.</b> Register with every member's <b>BITS ID and BITS email</b>. Use one device per team at a time.</li>
+   <li><b>1 hour per team.</b> Teams start at different times. Each team gets 60 minutes from its own start. Press Start only when an organizer tells your team to begin. The clock only runs while this site is open: if you have to leave, close it and your remaining time is saved. To continue later, open the site on any device and enter the same BITS ID as Member 1.</li>
+   <li><b>Start and end times</b> are recorded by the organizers. Report to the organizer desk as soon as your bot is online (or your hour runs out) so your end time is logged.</li>
+   <li><b>Levels 1–4 open in any order.</b> Split hardware and software between members. Level 5 unlocks after 1–4 are solved.</li>
+   <li><b>Hardware levels use Tinkercad Circuits</b> (free, sign in with Google). Always click <b>Copy and Tinker</b> and work on your own copy, never the shared original.</li>
+   <li><b>Answers</b> aren't case-sensitive and spaces are ignored. Wrong answers cost nothing, so keep trying.</li>
+   <li><b>Hints</b> cost points: hint 1 −${HINT_COST[0]}, hint 2 −${HINT_COST[1]}, hint 3 −${HINT_COST[2]}. Hardware hint cards are also at the hint table.</li>
+   <li><b>Scoring:</b> ${LEVEL_POINTS} per level, plus a time bonus of 1 point per minute left when you solve it, plus ${BOOT_POINTS} for bringing the bot online. Ties are broken by total time taken.</li>
+   <li><b>Fair play:</b> no sharing answers between teams, no AI tools or internet searches for solutions. Organizers' decisions are final.</li>
+   <li><b>Data:</b> your team name, BITS IDs, emails, progress, time and device IP address are recorded for running and judging the event.</li>
+   <li>Stuck for long? Ask an organizer. If the site has a problem, call one over and don't refresh repeatedly.</li>
+  </ul></div>`; }
+
+function viewWelcome(){
+  stats();
+  if(S){ app.innerHTML = `<h1>Guidelines</h1>${rulesHTML()}<button onclick="go('')">← Back to levels</button>`; return; }
+  app.innerHTML = `<h1>Fix the Bot</h1><p class="mute">IFOR Robotics Club · BITS Pilani Dubai Campus</p>
+   ${rulesHTML()}
+   <div class="card"><h2>Register your team</h2>
+    <p><input id="tname" maxlength="24" placeholder="Team name" autocomplete="off"></p>
+    ${[1,2,3].map(i=>`<h3>Member ${i}${i===1?"":" (optional)"}</h3>
+     <div class="row"><input id="bid${i}" maxlength="13" placeholder="BITS ID, e.g. 2023A7PS0055U" autocomplete="off" autocapitalize="characters" oninput="fillEmail(${i})">
+     <input id="em${i}" type="email" placeholder="BITS email" autocomplete="off"></div>`).join("")}
+    <p class="mute">Already registered and coming back? Enter the same BITS ID as Member 1 to continue where you left off.</p>
+    <p class="mute">Press Start only when an organizer tells your team to begin. Your 60 minutes start then.</p>
+    <button class="pri" id="startBtn" onclick="start()">I've read the guidelines — Start 60:00</button>
+    <div class="msg bad" id="wmsg"></div></div>
+   <p><a href="#leaderboard" class="mute">View leaderboard</a></p>`;
+}
+const BITS_RE = /^20\d{2}[A-Z0-9]{4}\d{4}[A-Z]$/;
+const emailFor = id => BITS_RE.test(id) ? `f${id.slice(0,4)}${id.slice(8,12)}@${EMAIL_DOMAIN}`.toLowerCase() : "";
+function fillEmail(i){
+  const b = document.getElementById("bid"+i), e = document.getElementById("em"+i);
+  b.value = b.value.toUpperCase().replace(/[^A-Z0-9]/g,"");
+  if(!e.dataset.touched) e.value = emailFor(b.value);
+  e.oninput = () => e.dataset.touched = 1;
+}
+async function start(){
+  const msg = document.getElementById("wmsg"), btn = document.getElementById("startBtn");
+  const fail = t => { msg.textContent = t; btn.disabled = false; };
+  msg.textContent = ""; btn.disabled = true;
+  const n = document.getElementById("tname").value.trim();
+  const members = [];
+  for(const i of [1,2,3]){
+    const id = document.getElementById("bid"+i).value.trim().toUpperCase();
+    const em = document.getElementById("em"+i).value.trim().toLowerCase();
+    if(!id && !em && i>1) continue;
+    if(!BITS_RE.test(id)) return fail(`Member ${i}: enter a valid BITS ID (e.g. 2023A7PS0055U).`);
+    if(!new RegExp(`^[a-z0-9._%+-]+@${EMAIL_DOMAIN.replace(/\./g,"\\.")}$`).test(em)) return fail(`Member ${i}: enter a BITS email ending in @${EMAIL_DOMAIN}.`);
+    if(members.some(m=>m.bitsId===id)) return fail(`Member ${i}: this BITS ID is entered twice.`);
+    members.push({bitsId:id, email:em});
+  }
+  if(FIREBASE_URL){
+    try{
+      // Returning team? Member 1's BITS ID is already registered -> resume that team.
+      const existing = await Promise.all(members.map(m=>db(`ids/${m.bitsId}`)));
+      if(existing[0]){
+        const st = await db(`state/${existing[0]}`);
+        if(st){
+          if(!confirm(`${members[0].bitsId} is already registered to team "${st.team}". Continue as that team on this device?`)) return fail("");
+          S = {...st, solved:st.solved||{}, hints:st.hints||{}, members:[], lastTick:now(), idsOk:true};
+          save(); refreshIP(); go(""); return route();
+        }
+      }
+      const taken = members.findIndex((m,i)=>existing[i]);
+      if(taken >= 0) return fail(`${members[taken].bitsId} is already registered to another team. Ask an organizer.`);
+    }catch(e){ return fail("Can't reach the event database. Check the WiFi and try again, or call an organizer."); }
+  }
+  if(n.length<2) return fail("Enter a team name.");
+  S = {team:n, id:n.toLowerCase().replace(/[^a-z0-9]/g,"").slice(0,20)+"-"+Math.random().toString(36).slice(2,7),
+       members, start:now(), lastTick:now(), used:0, solved:{}, hints:{}, end:null, ip:null, ips:[]};
+  save(); await registerIds(); refreshIP(); go(""); route();
+}
+
+function viewMap(){
+  stats();
+  const cards = [1,2,3,4,5].map(n=>{
+    const L=LEVELS[n], done=S.solved[n], locked = n===5 && !allHW_SW();
+    return `<button class="lvl ${done?"done":""} ${locked?"locked":""}" ${locked?"disabled":""} onclick="go('level${n}')">
+      <div class="row" style="justify-content:space-between"><span class="tag">${L.type}</span>
+      <span class="tag ${done?"ok":""}">${done?"✓ "+S.solved[n].frag: locked?"🔒 locked":"~"+L.mins+" min"}</span></div>
+      <h2 style="margin-top:10px">${n}. ${L.title}</h2></button>`;}).join("");
+  const frags = [1,2,3,4,5].map(n=>S.solved[n]?S.solved[n].frag:"????").join(" - ");
+  app.innerHTML = `<h1>Repair console</h1>
+   ${timeUp()?`<div class="card" style="border-color:var(--bad)"><b>Time's up.</b> Your score is locked at ${score()}. Show this screen to an organizer.</div>`:""}
+   <div class="grid">${cards}</div>
+   <div class="card"><h3 style="margin-top:0">Boot code fragments</h3><div class="frag" style="font-size:15px;word-break:break-all">${frags}</div>
+    <p><button class="pri" ${S.solved[5]&&!timeUp()?"":"disabled"} onclick="go('boot')">Enter boot code</button></p></div>
+   <p><a href="#rules" class="mute">Guidelines</a> · <a href="#leaderboard" class="mute">Leaderboard</a></p>`;
+}
+
+function viewLevel(n){
+  stats(); const L=LEVELS[n];
+  if(!L || (n===5 && !allHW_SW())) return go("");
+  const used = S.hints[n]||0, done=S.solved[n];
+  const hints = L.hints.slice(0,used).map((h,i)=>`<div class="hint"><b>Hint ${i+1}:</b> ${h}</div>`).join("");
+  app.innerHTML = `<p><button onclick="go('')">← Levels</button></p>
+   <div class="card"><span class="tag">${L.type} · ~${L.mins} min</span><h1>Level ${n}: ${L.title}</h1>${L.body()}</div>
+   <div class="card">${done?`<p class="msg ok">✓ Solved. Fragment ${n}: <span class="frag">${done.frag}</span></p>`:`
+    <h3 style="margin-top:0">Your answer</h3>
+    <div class="row"><input id="ans" autocomplete="off" autocapitalize="characters" placeholder="Answer" onkeydown="if(event.key==='Enter')check(${n})">
+    <button class="pri" onclick="check(${n})" ${timeUp()?"disabled":""}>Submit</button></div>
+    <div class="msg" id="msg"></div>`}</div>
+   <div class="card"><h3 style="margin-top:0">Hints</h3>${hints||'<p class="mute">No hints used.</p>'}
+    ${!done && used<3 && !timeUp()?`<button onclick="hint(${n})">Buy hint ${used+1} (−${HINT_COST[used]} pts)</button>`:""}</div>`;
+}
+async function check(n){
+  const el=document.getElementById("ans"), m=document.getElementById("msg"), v=el.value;
+  if(!norm(v)) return;
+  const h = await sha(String(n), v);
+  if(HASHES[String(n)].includes(h)){
+    let frag = norm(v);
+    if(/^[01]+$/.test(frag) && frag.length%8===0) frag = frag.match(/.{8}/g).map(b=>String.fromCharCode(parseInt(b,2))).join("");
+    S.solved[n] = {frag, at:now(), bonus:Math.floor(remainingMs()/60000)};
+    save(); stats(); viewLevel(n);
+  } else { m.className="msg bad"; m.textContent="✗ Not quite. Try again."; el.select(); }
+}
+function hint(n){
+  const used=S.hints[n]||0;
+  if(!confirm(`Buy hint ${used+1} for ${HINT_COST[used]} points?`)) return;
+  S.hints[n]=used+1; save(); viewLevel(n);
+}
+
+function viewBoot(){
+  stats(); if(!S.solved[5]) return go("");
+  app.innerHTML = `<p><button onclick="go('')">← Levels</button></p>
+   <div class="card"><h1>Boot sequence</h1><p>Enter the five fragments joined in level order, separated by dashes:</p>
+   <pre>F1-F2-F3-F4-F5</pre>
+   <div class="row"><input id="ans" autocomplete="off" autocapitalize="characters" placeholder="Boot code" onkeydown="if(event.key==='Enter')boot()">
+   <button class="pri" onclick="boot()">Boot</button></div><div class="msg" id="msg"></div></div>`;
+}
+async function boot(){
+  const v=document.getElementById("ans").value, h=await sha("boot",v);
+  if(HASHES.boot.includes(h)){ tick(); S.end=now(); save(); route(); }
+  else { const m=document.getElementById("msg"); m.className="msg bad"; m.textContent="✗ BOOT FAILED. Check fragment order."; }
+}
+
+function viewOnline(){
+  stats(); const used=usedMs(), mm=Math.floor(used/60000), ss=Math.floor(used/1000)%60;
+  app.innerHTML = `<div class="online"><div class="boot" id="bootlog"></div>
+   <div class="big hidden" id="big">BOT ONLINE</div>
+   <div id="after" class="hidden"><h2 style="margin-top:20px">${esc(S.team)}</h2>
+   <p class="frag">${score()} pts · ${mm}m ${ss}s</p><p class="mute">Show this screen to an organizer.</p>
+   <p><a href="#leaderboard" class="btn">Leaderboard</a></p></div></div>`;
+  const lines=["> power ........ OK","> sensors ...... OK","> motors ....... OK","> firmware ..... OK","> logic core ... OK","> decrypting boot code ... OK"];
+  const log=document.getElementById("bootlog"); let i=0;
+  const t=setInterval(()=>{ if(i<lines.length){ log.innerHTML+=lines[i++]+"<br>" } else { clearInterval(t);
+    document.getElementById("big").classList.remove("hidden"); document.getElementById("after").classList.remove("hidden"); } },380);
+}
+
+async function viewBoard(){
+  stats();
+  app.innerHTML = `<p><button onclick="go('')">← Back</button></p><h1>Leaderboard</h1><div id="lb" class="card">Loading…</div>`;
+  if(!FIREBASE_URL){ document.getElementById("lb").innerHTML = `<p class="mute">Live leaderboard isn't connected. Organizers are tracking scores on the projector sheet.</p>`; return; }
+  const draw = async () => {
+    if(location.hash!=="#leaderboard") return clearInterval(timer);
+    try{
+      const d = await (await fetch(`${FIREBASE_URL}/board.json?t=${now()}`)).json() || {};
+      const rows = Object.values(d).sort((a,b)=>b.score-a.score || a.usedMs-b.usedMs);
+      document.getElementById("lb").innerHTML = rows.length ? `<table><tr><th>#</th><th>Team</th><th>Levels</th><th>Score</th></tr>${rows.map((r,i)=>
+        `<tr><td>${i+1}</td><td>${esc(r.name)} ${r.online?"🤖":""}</td><td>${r.solved}/5</td><td>${r.score}</td></tr>`).join("")}</table>` : `<p class="mute">No teams yet.</p>`;
+    }catch(e){ document.getElementById("lb").textContent="Couldn't reach leaderboard. Retrying…"; }
+  };
+  draw(); const timer=setInterval(draw,5000);
+}
+
+/* ---------- helpers ---------- */
+function esc(s){ return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])) }
+function copyCode(id){ const t=document.getElementById(id).innerText;
+  (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>alert("Code copied!")).catch(()=>prompt("Copy this code:",t)); }
+function stats(){
+  const el=document.getElementById("stats"); if(!S){ el.classList.add("hidden"); return; }
+  el.classList.remove("hidden");
+  document.getElementById("sTeam").textContent=S.team; document.getElementById("sScore").textContent=score();
+  const r=remainingMs(), t=document.getElementById("sTime");
+  t.textContent = S.end ? "DONE" : `${String(Math.floor(r/60000)).padStart(2,"0")}:${String(Math.floor(r/1000)%60).padStart(2,"0")}`;
+  t.classList.toggle("low", !S.end && r<5*60000);
+}
+let wasUp=false;
+setInterval(()=>{ if(!S) return; tick(); stats(); if(timeUp() && !wasUp){ wasUp=true; route(); } }, 1000);
+setInterval(push, 30000);
+if(S){ refreshIP(); push(); }
+console.log("%c[BOT] decoder note: shift each letter BACKWARD (toward A).", "color:#3ddc97;font-weight:bold");
+route();
+</script>
+</body>
+</html>
